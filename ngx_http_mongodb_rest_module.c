@@ -10,6 +10,7 @@ static ngx_int_t ngx_http_mongodb_rest_handler(ngx_http_request_t* request);
 static char* ngx_http_mongodb_rest(ngx_conf_t* cf, ngx_command_t* command, void* void_conf);
 static char* ngx_http_mongodb_rest_merge_loc_conf(ngx_conf_t* cf, void* void_parent, void* void_child);
 static void* ngx_http_mongodb_rest_create_loc_conf(ngx_conf_t* conf);
+static void get(ngx_str_t* db, ngx_str_t* collection, u_char* id, ngx_buf_t* b);
 
 typedef struct {
   ngx_str_t db;
@@ -96,8 +97,8 @@ static ngx_int_t ngx_http_mongodb_rest_handler(ngx_http_request_t* r){
   r->headers_out.content_type.data = (u_char *) CONTENT_TYPE;
   ngx_http_send_header(r);
 
-  b->pos = mr_conf->db.data; /* address of the first position of the data */
-  b->last = mr_conf->db.data + mr_conf->db.len;  /* address of the last position of the data */
+  /* get the result and write it to the buffer */
+  get(&mr_conf->db, &mr_conf->collection, (u_char *)"12", b);
 
   b->memory = 1; /* content is in read-only memory */
     /* (i.e., filters should copy it rather than rewrite in place) */
@@ -125,4 +126,12 @@ static char* ngx_http_mongodb_rest_merge_loc_conf(ngx_conf_t* cf, void* void_par
   ngx_conf_merge_str_value(child->collection, parent->collection, NULL);
 
   return NGX_CONF_OK;
+}
+
+
+
+/* mongodb functions */
+static void get(ngx_str_t *db, ngx_str_t *collection, u_char* id, ngx_buf_t *b){
+  b->pos = db->data; /* address of the first position of the data */
+  b->last =db->data + db->len;  /* address of the last position of the data */
 }
