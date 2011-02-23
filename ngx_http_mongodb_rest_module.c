@@ -91,6 +91,7 @@ static ngx_int_t ngx_http_mongodb_rest_handler(ngx_http_request_t* r){
   ngx_buf_t *b;
   ngx_chain_t out;
   ngx_http_mongodb_rest_loc_conf_t *mr_conf;
+  char id[100];
 
   mr_conf = ngx_http_get_module_loc_conf(r, ngx_http_mongodb_rest_module);
 
@@ -108,8 +109,12 @@ static ngx_int_t ngx_http_mongodb_rest_handler(ngx_http_request_t* r){
   r->headers_out.content_type.data = (u_char *) CONTENT_TYPE;
   ngx_http_send_header(r);
 
+
+  /* get id */
+  sscanf((char*)r->uri.data, "/%s", id);
+
   /* get the result and write it to the buffer */
-  get(&mr_conf->db, &mr_conf->collection, "12", b);
+  get(&mr_conf->db, &mr_conf->collection, id, b);
 
   b->memory = 1; /* content is in read-only memory */
   /* (i.e., filters should copy it rather than rewrite in place) */
