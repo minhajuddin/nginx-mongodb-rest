@@ -141,7 +141,7 @@ static char* ngx_http_mongodb_rest_merge_loc_conf(ngx_conf_t* cf, void* void_par
 
 /* mongodb functions */
 static ngx_int_t log_mongo_error(ngx_log_t *log, mongo_conn_return status);
-/*int get_mongo_connection(ngx_log_t *log);*/
+void to_json(char *buf, const char * data, int depth);
 
 static void get(ngx_str_t *db, ngx_str_t *collection, char* id, ngx_buf_t *b){
   bson_buffer bb;
@@ -160,12 +160,15 @@ static void get(ngx_str_t *db, ngx_str_t *collection, char* id, ngx_buf_t *b){
   if(!mongo_find_one(cached_connection, ns, &cond, 0, &obj)){
     strcpy((char *)result, "{'error':'record not found'}");
   } else {
-    strcpy((char *)result, "{'success':'record found'}");
+    to_json((char *)result, obj.data, 10);
   }
 
   b->pos = result; /* address of the first position of the data */
   b->last = result + strlen((char *)result);  /* address of the last position of the data */
+
   // destroy cond bb and other stuff
+  bson_destroy(&cond);
+  bson_destroy(&obj);
 }
 
 
@@ -192,26 +195,6 @@ static void ngx_http_mongodb_rest_exit_worker(ngx_cycle_t* cycle) {
   mongo_disconnect(cached_connection);
   mongo_destroy(cached_connection);
 }
-
-
-/*
-int get_mongo_connection(ngx_log_t *log){
-  mongo_conn_return status;
-
-  if(cached_connection->connected) { 
-    ngx_msleep(500);
-    status = mongo_reconnect(cached_connection);
-  }
-
-  if (status != mongo_conn_success){
-    return log_mongo_error(log, status);
-  }
-
-  return NGX_OK;
-}
-*/
-
-
 
 static ngx_int_t log_mongo_error(ngx_log_t *log, mongo_conn_return status){
 
@@ -241,3 +224,67 @@ static ngx_int_t log_mongo_error(ngx_log_t *log, mongo_conn_return status){
 }
 
 
+void to_json(char *buf, const char * data, int depth){
+  int array_count = 0;
+  int object_count = 0;
+  bson_iterator i;
+  const char * key;
+
+  char oidhex[25];
+  bson_iterator_init( &i , data );
+
+  sprintf(buf+strlen(buf),"{");
+  while ( bson_iterator_next( &i ) ){
+    bson_type t = bson_iterator_type( &i );
+    if ( t == 0 )
+      break;
+    key = bson_iterator_key( &i );
+
+    if(object_count > 0){sprintf(buf+strlen(buf),",");}
+    else{object_count=1;}
+
+    sprintf(buf+strlen(buf), "\"%s\":" , key );
+
+    switch ( t ){
+      case bson_int:
+        sprintf(buf+strlen(buf), "%d" , bson_iterator_int( &i ) );
+        break;
+      case bson_double:
+        sprintf(buf+strlen(buf), "%f" , bson_iterator_double( &i ) ); 
+        break;
+      case bson_bool:
+        sprintf(buf+strlen(buf), "%s" , bson_iterator_bool( &i ) ? "true" : "false" ); 
+        break;
+      case bson_string:
+        sprintf(buf+strlen(buf), "\"%s\"" , bson_iterator_string( &i ) ); 
+        break;
+      case bson_null:
+        sprintf( buf+strlen(buf),"null" ); 
+        break;
+      case bson_oid:
+        bson_oid_to_string(bson_iterator_oid(&i), oidhex); 
+        sprintf(buf+strlen(buf), "%s" , oidhex ); 
+        break;
+      case bson_object:
+        to_json(buf, bson_iterator_value( &i ) , depth + 1 );
+        break;
+      case bson_array:
+        sprintf(buf+strlen(buf), "[" );
+        bson_iterator j;
+        bson_iterator_init( &j , bson_iterator_value(&i) );
+        array_count =0;
+        while( bson_iterator_next(&j)){
+          if(array_count > 0){sprintf(buf+strlen(buf),",");}
+          else{array_count=1;}
+          to_json(buf, bson_iterator_value( &j ) , depth + 1 );
+        }
+        sprintf(buf+strlen(buf), "]" );
+        break;
+
+      default:
+        fprintf( stderr , "can't print type : %d\n" , t );
+
+    }
+  }
+  sprintf(buf+strlen(buf),"}");
+}
