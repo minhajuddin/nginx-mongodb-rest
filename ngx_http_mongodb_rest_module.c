@@ -152,7 +152,7 @@ static void get(ngx_str_t *db, ngx_str_t *collection, char* id, ngx_buf_t *b){
   bson_buffer bb;
   bson obj;
   bson cond;
-  char result[1000];
+  char result[1000] = "";
   char ns[1000];
 
   //get the query
