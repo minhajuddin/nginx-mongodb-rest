@@ -147,7 +147,7 @@ static void get(ngx_str_t *db, ngx_str_t *collection, char* id, ngx_buf_t *b){
   bson_buffer bb;
   bson obj;
   bson cond;
-  u_char result[1000];
+  char result[1000];
   char ns[1000];
 
   //get the query
@@ -158,13 +158,13 @@ static void get(ngx_str_t *db, ngx_str_t *collection, char* id, ngx_buf_t *b){
   sprintf(ns, "%s.%s", db->data, collection->data);
 
   if(!mongo_find_one(cached_connection, ns, &cond, 0, &obj)){
-    strcpy((char *)result, "{'error':'record not found'}");
+    strcpy(result, "{'error':'record not found'}");
   } else {
-    to_json((char *)result, obj.data, 10);
+    to_json(result, obj.data, 10);
   }
 
-  b->pos = result; /* address of the first position of the data */
-  b->last = result + strlen((char *)result);  /* address of the last position of the data */
+  b->pos = (u_char*)result; /* address of the first position of the data */
+  b->last = (u_char*)result + strlen(result);  /* address of the last position of the data */
 
   // destroy cond bb and other stuff
   bson_destroy(&cond);
