@@ -15,7 +15,7 @@ static ngx_int_t ngx_http_mongodb_rest_handler(ngx_http_request_t* request);
 static char* ngx_http_mongodb_rest(ngx_conf_t* cf, ngx_command_t* command, void* void_conf);
 static char* ngx_http_mongodb_rest_merge_loc_conf(ngx_conf_t* cf, void* void_parent, void* void_child);
 static void* ngx_http_mongodb_rest_create_loc_conf(ngx_conf_t* conf);
-static void get(ngx_str_t* db, ngx_str_t* collection, u_char* id, ngx_buf_t* b);
+static void get(ngx_str_t* db, ngx_str_t* collection, char* id, ngx_buf_t* b);
 static void ngx_http_mongodb_rest_exit_worker(ngx_cycle_t* cycle);
 
 static ngx_int_t ngx_http_mongodb_rest_init_worker(ngx_cycle_t* cycle);
@@ -109,7 +109,7 @@ static ngx_int_t ngx_http_mongodb_rest_handler(ngx_http_request_t* r){
   ngx_http_send_header(r);
 
   /* get the result and write it to the buffer */
-  get(&mr_conf->db, &mr_conf->collection, (u_char *)"12", b);
+  get(&mr_conf->db, &mr_conf->collection, "12", b);
 
   b->memory = 1; /* content is in read-only memory */
   /* (i.e., filters should copy it rather than rewrite in place) */
@@ -143,9 +143,29 @@ static char* ngx_http_mongodb_rest_merge_loc_conf(ngx_conf_t* cf, void* void_par
 static ngx_int_t log_mongo_error(ngx_log_t *log, mongo_conn_return status);
 /*int get_mongo_connection(ngx_log_t *log);*/
 
-static void get(ngx_str_t *db, ngx_str_t *collection, u_char* id, ngx_buf_t *b){
-  b->pos = db->data; /* address of the first position of the data */
-  b->last =db->data + db->len;  /* address of the last position of the data */
+static void get(ngx_str_t *db, ngx_str_t *collection, char* id, ngx_buf_t *b){
+  bson_buffer bb;
+  bson obj;
+  bson cond;
+  u_char result[1000];
+  char ns[1000];
+
+  //get the query
+  bson_buffer_init(&bb);
+  bson_append_string(&bb, "_id", id);
+  bson_from_buffer(&cond, &bb);
+
+  sprintf(ns, "%s.%s", db->data, collection->data);
+
+  if(!mongo_find_one(cached_connection, ns, &cond, 0, &obj)){
+    strcpy((char *)result, "{'error':'record not found'}");
+  } else {
+    strcpy((char *)result, "{'success':'record found'}");
+  }
+
+  b->pos = result; /* address of the first position of the data */
+  b->last = result + strlen((char *)result);  /* address of the last position of the data */
+  // destroy cond bb and other stuff
 }
 
 
