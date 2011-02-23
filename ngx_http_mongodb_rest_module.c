@@ -4,13 +4,24 @@
 #include <signal.h>
 #include <stdio.h>
 
+#include "mongo-c-driver/src/bson.h"
+#include "mongo-c-driver/src/mongo.h"
+
 #define CONTENT_TYPE "application/json"
+#define MONGO_HOST "127.0.0.1"
+#define MONGO_PORT 27017
 
 static ngx_int_t ngx_http_mongodb_rest_handler(ngx_http_request_t* request);
 static char* ngx_http_mongodb_rest(ngx_conf_t* cf, ngx_command_t* command, void* void_conf);
 static char* ngx_http_mongodb_rest_merge_loc_conf(ngx_conf_t* cf, void* void_parent, void* void_child);
 static void* ngx_http_mongodb_rest_create_loc_conf(ngx_conf_t* conf);
 static void get(ngx_str_t* db, ngx_str_t* collection, u_char* id, ngx_buf_t* b);
+static void ngx_http_mongodb_rest_exit_worker(ngx_cycle_t* cycle);
+
+static ngx_int_t ngx_http_mongodb_rest_init_worker(ngx_cycle_t* cycle);
+
+//connection shared by requests for a single worker
+mongo_connection cached_connection[1];
 
 typedef struct {
   ngx_str_t db;
@@ -19,15 +30,15 @@ typedef struct {
 
 
 static ngx_command_t ngx_http_mongodb_rest_commands[] = {
-    {
-      ngx_string("mongodb_rest"),
-      NGX_HTTP_LOC_CONF | NGX_CONF_1MORE,
-      ngx_http_mongodb_rest,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      0,
-      NULL
-    },
-    ngx_null_command
+  {
+    ngx_string("mongodb_rest"),
+    NGX_HTTP_LOC_CONF | NGX_CONF_1MORE,
+    ngx_http_mongodb_rest,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    0,
+    NULL
+  },
+  ngx_null_command
 };
 
 
@@ -50,10 +61,10 @@ ngx_module_t ngx_http_mongodb_rest_module = {
   NGX_HTTP_MODULE,
   NULL,
   NULL,
+  ngx_http_mongodb_rest_init_worker,
   NULL,
   NULL,
-  NULL,
-  NULL,
+  ngx_http_mongodb_rest_exit_worker,
   NULL,
   NGX_MODULE_V1_PADDING
 };
@@ -101,7 +112,7 @@ static ngx_int_t ngx_http_mongodb_rest_handler(ngx_http_request_t* r){
   get(&mr_conf->db, &mr_conf->collection, (u_char *)"12", b);
 
   b->memory = 1; /* content is in read-only memory */
-    /* (i.e., filters should copy it rather than rewrite in place) */
+  /* (i.e., filters should copy it rather than rewrite in place) */
   b->last_buf = 1;  /* there will be no more buffers in the request */
 
   out.buf = b;
@@ -128,10 +139,85 @@ static char* ngx_http_mongodb_rest_merge_loc_conf(ngx_conf_t* cf, void* void_par
   return NGX_CONF_OK;
 }
 
-
-
 /* mongodb functions */
+static ngx_int_t log_mongo_error(ngx_log_t *log, mongo_conn_return status);
+/*int get_mongo_connection(ngx_log_t *log);*/
+
 static void get(ngx_str_t *db, ngx_str_t *collection, u_char* id, ngx_buf_t *b){
   b->pos = db->data; /* address of the first position of the data */
   b->last =db->data + db->len;  /* address of the last position of the data */
 }
+
+
+static ngx_int_t ngx_http_mongodb_rest_init_worker(ngx_cycle_t* cycle) {
+  mongo_connection_options opts[1];
+  mongo_conn_return status;
+
+  ngx_log_error(NGX_LOG_ERR, cycle->log, 0,"WORKER INIT");
+
+  strcpy( opts->host , MONGO_HOST);
+  opts->port = MONGO_PORT;
+
+  status = mongo_connect( cached_connection, opts );
+
+  if (status != mongo_conn_success){
+    return log_mongo_error(cycle->log, status);
+  }
+
+  return NGX_OK;
+}
+
+
+static void ngx_http_mongodb_rest_exit_worker(ngx_cycle_t* cycle) {
+  mongo_disconnect(cached_connection);
+  mongo_destroy(cached_connection);
+}
+
+
+/*
+int get_mongo_connection(ngx_log_t *log){
+  mongo_conn_return status;
+
+  if(cached_connection->connected) { 
+    ngx_msleep(500);
+    status = mongo_reconnect(cached_connection);
+  }
+
+  if (status != mongo_conn_success){
+    return log_mongo_error(log, status);
+  }
+
+  return NGX_OK;
+}
+*/
+
+
+
+static ngx_int_t log_mongo_error(ngx_log_t *log, mongo_conn_return status){
+
+  switch (status) {
+    case mongo_conn_success:
+      return NGX_OK;
+    case mongo_conn_bad_arg:
+      ngx_log_error(NGX_LOG_ERR, log, 0,
+          "Mongo Exception: Bad Arguments");
+      return NGX_ERROR;
+    case mongo_conn_no_socket:
+      ngx_log_error(NGX_LOG_ERR, log, 0,
+          "Mongo Exception: No Socket");
+      return NGX_ERROR;
+    case mongo_conn_fail:
+      ngx_log_error(NGX_LOG_ERR, log, 0,  "Mongo Exception: Connection Failure 127.0.0.1:27017;");
+      return NGX_ERROR;
+    case mongo_conn_not_master:
+      ngx_log_error(NGX_LOG_ERR, log, 0,
+          "Mongo Exception: Not Master");
+      return NGX_ERROR;
+    default:
+      ngx_log_error(NGX_LOG_ERR, log, 0,
+          "Mongo Exception: Unknown Error");
+      return NGX_ERROR;
+  }
+}
+
+
