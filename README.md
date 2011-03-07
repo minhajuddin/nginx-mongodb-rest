@@ -62,7 +62,7 @@ Khaja Minhajuddin (minhajuddin&#64;cosmicvent.com), Nagaraju BVS (nagaraju&#64;c
 
 Credits
 =======
-- A lot of the code was re-used/copied from [nginx-gridfs](https://github.com/mdirolf/nginx-gridfs.git)
+- [nginx-gridfs](https://github.com/mdirolf/nginx-gridfs.git) was the "inspiration" for this project.
 
 License
 =======
